@@ -25,7 +25,7 @@ jobs:
       - name: Setup Build Environment
         run: |
           set -x # Enable shell tracing to see each command executed
-          sudo apt-get update -y
+          sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             python3-pip \
             curl \
