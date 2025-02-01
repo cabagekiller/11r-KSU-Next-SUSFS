@@ -8,13 +8,14 @@ on:
 
 env:
   DEBIAN_FRONTEND: noninteractive
-  ROOT_DIR_PREFIX: "OP12-A15"
+  ROOT_DIR_PREFIX: "OP11r-A15"
   BRANCH: "android12-5.10"
   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   
 jobs:
   build-release:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
