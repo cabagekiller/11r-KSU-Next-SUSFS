@@ -180,8 +180,7 @@ jobs:
           mkdir out
           export PATH="/usr/lib/ccache:$PATH"
           # Modified build command with correct syntax
-          sed -i '/echo "LTO $LTO "/i export LTO=thin'
-          ./oplus/build/oplus_setup.sh \
+          sed -i '/echo "LTO $LTO "/i export LTO=thin' ./oplus/build/oplus_setup.sh \
             waipio \
             gki \
             --jobs=$(nproc --all) \
