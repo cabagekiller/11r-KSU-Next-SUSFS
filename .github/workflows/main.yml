@@ -65,8 +65,6 @@ jobs:
 
       - name: Setup Python and Repo Tool
         run: |
-          python3 -m pip install --upgrade pip
-          pip3 install gitpython xmltodict
           mkdir -p ~/.bin
           curl https://storage.googleapis.com/git-repo-downloads/repo > ~/.bin/repo
           chmod a+x ~/.bin/repo
