@@ -194,7 +194,7 @@ jobs:
           export PATH="/usr/lib/ccache:$PATH"
           # Modified build command with correct syntax
           ./kernel_platform/oplus/build/oplus_build_kernel.sh \
-            -t waipio \
+            waipio \
             gki \
             --jobs=$(nproc --all) \
             --verbose_failures \
