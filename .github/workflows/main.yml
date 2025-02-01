@@ -189,9 +189,10 @@ jobs:
         run: |
           cd kernel_platform
           mkdir out
+          cd ..
           export PATH="/usr/lib/ccache:$PATH"
           # Modified build command with correct syntax
-          ./build_with_bazel.py \
+          ./kernel_platform/oplus/build/oplus_build_kernel.sh \
             -t waipio \
             gki \
             --jobs=$(nproc --all) \
