@@ -24,7 +24,8 @@ jobs:
 
       - name: Setup Build Environment
         run: |
-          sudo apt-get update
+          set -x # Enable shell tracing to see each command executed
+          sudo apt-get update -y
           sudo apt-get install -y --no-install-recommends \
             python3-pip \
             curl \
@@ -48,6 +49,7 @@ jobs:
             rsync \
             ccache \
             cmake
+          set +x # Disable shell tracing
 
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
