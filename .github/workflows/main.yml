@@ -99,11 +99,14 @@ jobs:
           repo init -u https://github.com/OnePlusOSS/kernel_manifest.git -b oneplus/sm8475 -m oneplus_11r_v.xml --depth=1
           repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
           rm -rf ./kernel_platform/common/android/abi_gki_protected_exports_*
+          echo "Current directory: $(pwd)"
+          echo "Directory contents:"
+          ls -l
 
-      - name: Setup KernelSU
+      - name: Setup KernelSU Next SUSFS
         working-directory: builds/${{ env.ROOT_DIR }}/kernel_platform/oneplus12_v/kernel_platform
         run: |
-          curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+          curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next-susfs
           cd KernelSU-Next/kernel
           sed -i 's/ccflags-y += -DKSU_VERSION=16/ccflags-y += -DKSU_VERSION=12335/' ./Makefile
 
