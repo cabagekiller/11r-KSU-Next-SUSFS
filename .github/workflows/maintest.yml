@@ -8,26 +8,23 @@ on:
 
 env:
   DEBIAN_FRONTEND: noninteractive
-  ROOT_DIR_PREFIX: "OP12-A15"
+  ROOT_DIR_PREFIX: "OP11r-A15"
   BRANCH: "android12-5.10"
   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   
 jobs:
   build-release:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      - name: Free disk space
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -qq curl
-          curl -fsSL https://raw.githubusercontent.com/kou/arrow/e49d8ae15583ceff03237571569099a6ad62be32/ci/scripts/util_free_space.sh | bash
       - name: Setup Build Environment
         run: |
+          set -x # Enable shell tracing to see each command executed
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             python3-pip \
@@ -50,7 +47,10 @@ jobs:
             python3-dev \
             python3-setuptools \
             rsync \
-            ccache
+            ccache \
+            cmake
+          set +x # Disable shell tracing
+
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
@@ -64,36 +64,33 @@ jobs:
           cd pahole
           cmake .
           sudo make install
+
       - name: Setup Python and Repo Tool
         run: |
-          python3 -m pip install --upgrade pip
-          pip3 install gitpython xmltodict
           mkdir -p ~/.bin
           curl https://storage.googleapis.com/git-repo-downloads/repo > ~/.bin/repo
           chmod a+x ~/.bin/repo
-          export PATH=$HOME/bin:$PATH  # Add $HOME/bin to PATH
-          echo "$HOME/.bin" >> $GITHUB_PATH
+          echo "$HOME/.bin" >> $GITHUB_PATH # Make repo available in PATH for subsequent steps
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
-      - name: Install repo tool to $HOME/bin
-        run: |
-         mkdir -p $HOME/bin
-         wget -O $HOME/bin/repo https://storage.googleapis.com/git-repo-downloads/repo
-         chmod a+x $HOME/bin/repo
-         export PATH=$HOME/bin:$PATH
-         repo --version
+          export PATH="$HOME/.bin:$PATH" # Ensure PATH is set in current shell as well for immediate use
+          repo --version # Verify repo is working and in PATH
+
+
       - name: Configure Build Directory
         run: |
           ROOT_DIR="${ROOT_DIR_PREFIX}-$(date +'%Y-%m-%d-%I-%M-%p')-release"
           echo "ROOT_DIR=${ROOT_DIR}" >> $GITHUB_ENV
           mkdir -p "builds/${ROOT_DIR}"
           cd "builds/${ROOT_DIR}"
+
       - name: Clone Required Repositories
         working-directory: builds/${{ env.ROOT_DIR }}
         run: |
           git clone https://github.com/TheWildJames/AnyKernel3.git -b $BRANCH
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-android12-5.10
           git clone https://github.com/TheWildJames/kernel_patches.git
+
       - name: Setup Kernel Source
         working-directory: builds/${{ env.ROOT_DIR }}
         run: |
@@ -102,12 +99,21 @@ jobs:
           repo init -u https://github.com/OnePlusOSS/kernel_manifest.git -b oneplus/sm8475 -m oneplus_11r_v.xml --depth=1
           repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
           rm -rf ./kernel_platform/common/android/abi_gki_protected_exports_*
+
       - name: Setup KernelSU
         working-directory: builds/${{ env.ROOT_DIR }}/kernel_platform/oneplus12_v/kernel_platform
         run: |
           curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
           cd KernelSU-Next/kernel
           sed -i 's/ccflags-y += -DKSU_VERSION=16/ccflags-y += -DKSU_VERSION=12335/' ./Makefile
+
+      - name: Set LTO to THIN
+        working-directory: builds/${{ env.ROOT_DIR }}/kernel_platform/oneplus12_v/kernel_platform
+        run: |
+         sed -i 's/CONFIG_LTO=n/CONFIG_LTO=y/' "./common/arch/arm64/configs/gki_defconfig"
+         sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
+         sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
+
           
       - name: Setup SUSFS
         working-directory: builds/${{ env.ROOT_DIR }}/kernel_platform/oneplus12_v/kernel_platform
@@ -144,6 +150,7 @@ jobs:
           patch -p1 -F 3 < apk_sign.c_fix.patch || true
           patch -p1 --fuzz=3 < Makefile_fix.patch || true
           patch -p1 --fuzz=3 < core_hook.c_fix.patch || true
+
       - name: Configure Kernel
         working-directory: builds/${{ env.ROOT_DIR }}/kernel_platform/oneplus12_v/kernel_platform
         run: |
@@ -178,15 +185,25 @@ jobs:
         run: |
           cd kernel_platform
           mkdir out
+          cd ..
           export PATH="/usr/lib/ccache:$PATH"
           # Modified build command with correct syntax
-          sed -i '/echo "LTO $LTO "/i export LTO=thin' ./oplus/build/oplus_setup.sh \
+          ./kernel_platform/oplus/build/oplus_build_kernel.sh \
+            waipio \
+            gki \
+            --jobs=$(nproc --all) \
+            --verbose_failures \
+            --config=stamp \
+            --user_kmi_symbol_lists=//msm-kernel:android/abi_gki_aarch64_qcom \
+            --ignore_missing_projects \
+            -o "$(pwd)/out"
             
       - name: Debug Working Directory
         working-directory: builds/${{ env.ROOT_DIR }}/kernel_platform/oneplus12_v/kernel_platform/out/dist
         run: |         
           pwd
           ls -l
+
       - name: Create ZIP Package
         working-directory: builds/${{ env.ROOT_DIR }}
         run: |
@@ -198,14 +215,17 @@ jobs:
           zip -r "../$ZIP_NAME" ./*
           ls -lh "../$ZIP_NAME"
           echo "zip_name=$ZIP_NAME" >> $GITHUB_ENV
+
       - name: Publish Release
         run: |
           # Change to the correct directory
           cd "./builds/${{ env.ROOT_DIR }}"
+
           # Debugging variables
           echo "ZIP_NAME: ${{ env.zip_name }}"
           ZIP_FILE_PATH="${GITHUB_WORKSPACE}/builds/${{ env.ROOT_DIR }}/${{ env.zip_name }}"
           echo "ZIP_FILE_PATH: $ZIP_FILE_PATH"
+
           # Validate ZIP file existence
           if [ -f "$ZIP_FILE_PATH" ]; then
               echo "ZIP file found: $ZIP_FILE_PATH"
@@ -213,8 +233,10 @@ jobs:
               echo "Error: ZIP file not found at $ZIP_FILE_PATH!"
               exit 1
           fi
+
           # Define the repository name if not already set
           REPO_NAME=${REPO_NAME:-$GITHUB_REPOSITORY}
+
           # Create a release using the GitHub CLI
           gh release create "v${{ env.BRANCH }}-$(date +'%Y.%m.%d-%H%M%S')" "$ZIP_FILE_PATH" \
             --repo "$REPO_NAME" \
