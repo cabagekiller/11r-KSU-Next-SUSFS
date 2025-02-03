@@ -1,4 +1,4 @@
-name: Build and Release Kernel
+name: Build and Release Kernel PC self hosted
 
 on:
   push:
