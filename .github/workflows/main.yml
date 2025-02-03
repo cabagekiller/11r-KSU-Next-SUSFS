@@ -49,7 +49,7 @@ jobs:
             rsync \
             ccache \
             cmake
-          set +x # Disable shell tracing
+          set +x
 
       - name: Install Latest Pahole
         run: |
