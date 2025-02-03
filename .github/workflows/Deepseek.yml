@@ -103,7 +103,7 @@ jobs:
           sed -i 's/ccflags-y += -DKSU_VERSION=16/ccflags-y += -DKSU_VERSION=12335/' ./Makefile
 
       - name: Set LTO to THIN
-        working-directory: builds/${{ env.ROOT_DIR }}/kernel_platform/oneplus12_v
+        working-directory: builds/${{ env.ROOT_DIR }}/kernel_platform/oneplus12_v/kernel_platform
         run: |
           sed -i 's/CONFIG_LTO=n/CONFIG_LTO=y/' "./common/arch/arm64/configs/gki_defconfig"
           sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
