@@ -1,0 +1,269 @@
+name: Build and Release Kernel (Native ARM64 Toolchain)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  DEBIAN_FRONTEND: noninteractive
+  ROOT_DIR_PREFIX: "OP11r-A15"
+  BRANCH: "android12-5.10"
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  build-release:
+    # Using your ARM64 runner.
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 180  # Extended timeout to allow for toolchain build.
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Build Environment
+        run: |
+          set -x
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            python3-pip \
+            curl \
+            git \
+            zip \
+            unzip \
+            gcc \
+            g++ \
+            make \
+            ninja-build \
+            file \
+            bc \
+            bison \
+            flex \
+            libssl-dev \
+            libelf-dev \
+            wget \
+            build-essential \
+            python3-dev \
+            python3-setuptools \
+            rsync \
+            ccache \
+            cmake \
+            gperf \
+            libncurses-dev \
+            autoconf \
+            automake \
+            texinfo \
+            help2man \
+            libtool \
+            libexpat1-dev
+          set +x
+
+      # ============================================================
+      # Build Native ARM64 Toolchain Using crosstool-NG
+      # ============================================================
+      - name: Clone and Build Crosstool-NG
+        run: |
+          # Clone crosstool-NG and install it locally.
+          git clone https://github.com/crosstool-ng/crosstool-ng.git
+          cd crosstool-ng
+          ./bootstrap
+          ./configure --prefix=$HOME/ct-ng
+          make -j$(nproc)
+          make install
+          echo "crosstool-ng installed at $HOME/ct-ng/bin"
+          # Add it to PATH for subsequent steps.
+          echo "$HOME/ct-ng/bin" >> $GITHUB_PATH
+
+      - name: Build Native ARM64 Toolchain
+        run: |
+          # List available samples (optional debugging)
+          ct-ng list-samples | grep aarch64
+          # Choose a sample configuration for an aarch64-linux toolchain.
+          # You can adjust this sample name as needed.
+          ct-ng aarch64-linux
+          # Optionally, tweak the configuration:
+          # ct-ng menuconfig
+          # Now build the toolchain. This can take a long time!
+          ct-ng build
+          # The resulting toolchain is typically installed in $HOME/x-tools/aarch64-linux
+          echo "Toolchain built at $HOME/x-tools/aarch64-linux"
+        env:
+          PATH: $HOME/ct-ng/bin:$PATH
+
+      # ============================================================
+      # End Native Toolchain Build; Proceed with Kernel Build
+      # ============================================================
+      - name: Setup Python and Repo Tool
+        run: |
+          mkdir -p ~/.bin
+          curl https://storage.googleapis.com/git-repo-downloads/repo > ~/.bin/repo
+          chmod a+x ~/.bin/repo
+          echo "$HOME/.bin" >> $GITHUB_PATH
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+          export PATH="$HOME/.bin:$PATH"
+          repo --version
+
+      - name: Configure Build Directory
+        run: |
+          ROOT_DIR="${ROOT_DIR_PREFIX}-$(date +'%Y-%m-%d-%I-%M-%p')-release"
+          echo "ROOT_DIR=${ROOT_DIR}" >> $GITHUB_ENV
+          mkdir -p "builds/${ROOT_DIR}"
+          cd "builds/${ROOT_DIR}"
+
+      - name: Clone Required Repositories
+        working-directory: builds/${{ env.ROOT_DIR }}
+        run: |
+          git clone https://github.com/TheWildJames/AnyKernel3.git -b $BRANCH
+          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-android12-5.10
+          git clone https://github.com/TheWildJames/kernel_patches.git
+
+      - name: Setup Kernel Source
+        working-directory: builds/${{ env.ROOT_DIR }}
+        run: |
+          mkdir -p kernel_platform/oneplus12_v
+          cd kernel_platform/oneplus12_v
+          echo "Deleted old repo"
+          repo init -u https://github.com/OnePlusOSS/kernel_manifest.git -b oneplus/sm8475 -m oneplus_11r_v.xml --depth=1
+          repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
+          rm -rf ./kernel_platform/common/android/abi_gki_protected_exports_*
+          echo "Current directory: $(pwd)"
+          echo "Directory contents:"
+          ls -l
+
+      - name: Setup KernelSU Next SUSFS
+        working-directory: builds/${{ env.ROOT_DIR }}/kernel_platform/oneplus12_v/kernel_platform
+        run: |
+          curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next-susfs
+          cd KernelSU-Next/kernel
+          sed -i 's/ccflags-y += -DKSU_VERSION=16/ccflags-y += -DKSU_VERSION=12335/' ./Makefile
+
+      - name: Set LTO to THIN
+        working-directory: builds/${{ env.ROOT_DIR }}/kernel_platform/oneplus12_v/kernel_platform
+        run: |
+         sed -i 's/CONFIG_LTO=n/CONFIG_LTO=y/' "./common/arch/arm64/configs/gki_defconfig"
+         sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
+         sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
+
+      - name: Setup SUSFS
+        working-directory: builds/${{ env.ROOT_DIR }}/kernel_platform/oneplus12_v/kernel_platform
+        run: |
+          mkdir -p ./common/fs
+          mkdir -p ./common/include/linux
+          cp ../../../susfs4ksu/kernel_patches/fs/susfs.c ./common/fs/
+          cp ../../../susfs4ksu/kernel_patches/include/linux/susfs.h ./common/include/linux/
+          cp ../../../susfs4ksu/kernel_patches/include/linux/susfs_def.h ./common/include/linux/
+          cp ../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./KernelSU-Next/
+          cp ../../../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android12-5.10.patch ./common/
+          cp ../../../kernel_patches/69_hide_stuff.patch ./common/
+          cp ../../../kernel_patches/selinux.c_fix.patch ./
+          cp ../../../kernel_patches/apk_sign.c_fix.patch ./
+          cp ../../../kernel_patches/Makefile_fix.patch ./
+          cp ../../../kernel_patches/core_hook.c_fix.patch ./
+          cd KernelSU-Next
+          patch -p1 < 10_enable_susfs_for_ksu.patch || true
+          cd ../common
+          patch -p1 < 50_add_susfs_in_gki-android12-5.10.patch || true
+          patch -p1 -F 3 < 69_hide_stuff.patch || true
+          sed -i '/obj-$(CONFIG_KSU_SUSFS_SUS_SU) += sus_su.o/d' ./fs/Makefile
+          cd ..
+          patch -p1 -F 3 < selinux.c_fix.patch || true
+          patch -p1 -F 3 < apk_sign.c_fix.patch || true
+          patch -p1 --fuzz=3 < Makefile_fix.patch || true
+          patch -p1 --fuzz=3 < core_hook.c_fix.patch || true
+
+      - name: Configure Kernel
+        working-directory: builds/${{ env.ROOT_DIR }}/kernel_platform/oneplus12_v/kernel_platform
+        run: |
+          echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_SU=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
+          sed -i '2s/check_defconfig//' ./common/build.config.gki
+
+      - name: Build Kernel
+        working-directory: builds/${{ env.ROOT_DIR }}/kernel_platform/oneplus12_v/
+        env:
+          # Set the CROSS_COMPILE to point to the newly built native toolchain.
+          CROSS_COMPILE: "$HOME/x-tools/aarch64-linux/bin/aarch64-linux-"
+          # Prepend the toolchain bin directory to PATH.
+          PATH: "$HOME/x-tools/aarch64-linux/bin:$PATH"
+        run: |
+          cd kernel_platform
+          mkdir -p out
+          cd ..
+          # Use your existing build script. It should pick up the native compiler via CROSS_COMPILE.
+          ./kernel_platform/oplus/build/oplus_build_kernel.sh \
+            waipio \
+            gki \
+            --jobs=$(nproc --all) \
+            --verbose_failures \
+            --config=stamp \
+            --user_kmi_symbol_lists=//msm-kernel:android/abi_gki_aarch64_qcom \
+            --ignore_missing_projects \
+            -o "$(pwd)/out"
+          
+      - name: Debug Working Directory
+        working-directory: builds/${{ env.ROOT_DIR }}/kernel_platform/oneplus12_v/kernel_platform/out/dist
+        run: |
+          pwd
+          ls -l
+
+      - name: Create ZIP Package
+        working-directory: builds/${{ env.ROOT_DIR }}
+        run: |
+          cp kernel_platform/oneplus12_v/kernel_platform/out/dist/Image AnyKernel3/Image
+          cp kernel_platform/oneplus12_v/kernel_platform/out/dist/Image.lz4 AnyKernel3/Image.lz4
+          cd AnyKernel3
+          ZIP_NAME="Anykernel3-OP-A15-android14-6.1-KernelSUNext-SUSFS-$(date +'%Y-%m-%d-%H-%M-%S').zip"
+          echo "Creating zip file $ZIP_NAME..."
+          zip -r "../$ZIP_NAME" ./*
+          ls -lh "../$ZIP_NAME"
+          echo "zip_name=$ZIP_NAME" >> $GITHUB_ENV
+
+      - name: Publish Release
+        run: |
+          cd "./builds/${{ env.ROOT_DIR }}"
+          echo "ZIP_NAME: ${{ env.zip_name }}"
+          ZIP_FILE_PATH="${GITHUB_WORKSPACE}/builds/${{ env.ROOT_DIR }}/${{ env.zip_name }}"
+          echo "ZIP_FILE_PATH: $ZIP_FILE_PATH"
+          if [ -f "$ZIP_FILE_PATH" ]; then
+              echo "ZIP file found: $ZIP_FILE_PATH"
+          else
+              echo "Error: ZIP file not found at $ZIP_FILE_PATH!"
+              exit 1
+          fi
+          REPO_NAME=${REPO_NAME:-$GITHUB_REPOSITORY}
+          gh release create "v${{ env.BRANCH }}-$(date +'%Y.%m.%d-%H%M%S')" "$ZIP_FILE_PATH" \
+            --repo "$REPO_NAME" \
+            --title "OP12 A15 ${{ env.BRANCH }} With KernelSU & SUSFS" \
+            --notes "Kernel release" \
+            --prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Build Logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-logs
+          path: |
+            builds/${{ env.ROOT_DIR }}/kernel_platform/oneplus12_v/kernel_platform/out/*.log
+            builds/${{ env.ROOT_DIR }}/kernel_platform/oneplus12_v/kernel_platform/**/*.rej
+          retention-days: 5
