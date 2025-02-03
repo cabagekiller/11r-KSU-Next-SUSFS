@@ -91,7 +91,6 @@ jobs:
         run: |
           mkdir -p kernel_platform/oneplus12_v
           cd kernel_platform/oneplus12_v
-          rm -r /mnt/c/Users/cabag/.repo
           echo "Deleted old repo"
           repo init -u https://github.com/OnePlusOSS/kernel_manifest.git -b oneplus/sm8475 -m oneplus_11r_v.xml --depth=1
           repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
