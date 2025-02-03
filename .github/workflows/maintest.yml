@@ -147,6 +147,7 @@ jobs:
           git add -A && git commit -a -m "BUILD Kernel" || true
           cd ..
           cd ./msm-kernel && git add -A && git commit -a -m "BUILD Kernel" || true
+          cd ..
           
           patch -p1 -F 3 < selinux.c_fix.patch || true
           patch -p1 -F 3 < apk_sign.c_fix.patch || true
