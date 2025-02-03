@@ -51,11 +51,6 @@ jobs:
             cmake
           set +x # Disable shell tracing
 
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          max-size: 2G
-
       - name: Install Latest Pahole
         run: |
           sudo apt-get remove --purge -y dwarves
