@@ -179,6 +179,9 @@ jobs:
           
           # Add additional tmpfs config setting
           echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_CFI_CLANG=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_CFI_CLANG_SHADOW=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "__cfi_slowpath" >> ./common/abi_symbollist.raw
        
           
           # Remove defconfig check
