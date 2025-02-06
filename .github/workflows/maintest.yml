@@ -178,6 +178,7 @@ jobs:
           
           # Add additional tmpfs config setting
           echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KMI_STRICT=y" >> ./common/arch/arm64/configs/gki_defconfig
        
           
           # Remove defconfig check
