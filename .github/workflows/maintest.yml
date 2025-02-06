@@ -89,7 +89,7 @@ jobs:
         run: |
           git clone https://github.com/TheWildJames/AnyKernel3.git -b $BRANCH
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-android12-5.10
-          git clone https://github.com/TheWildJames/kernel_patches.git
+          git clone https://github.com/WildPlusKernel/kernel_patches.git
 
       - name: Setup Kernel Source
         working-directory: builds/${{ env.ROOT_DIR }}
@@ -131,14 +131,15 @@ jobs:
           cp ../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./KernelSU-Next/
           cp ../../../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android12-5.10.patch ./common/
           cp ../../../kernel_patches/69_hide_stuff.patch ./common/
-          cp ../../../kernel_patches/selinux.c_fix.patch ./
-          cp ../../../kernel_patches/apk_sign.c_fix.patch ./
-          cp ../../../kernel_patches/Makefile_fix.patch ./
-          cp ../../../kernel_patches/core_hook.c_fix.patch ./
+          #cp ../../../kernel_patches/selinux.c_fix.patch ./
+          #cp ../../../kernel_patches/apk_sign.c_fix.patch ./
+          #cp ../../../kernel_patches/Makefile_fix.patch ./
+          #cp ../../../kernel_patches/core_hook.c_fix.patch ./
+          cp ../../../kernel_patches/KernelSU-Next-Implement-SUSFS-v1.5.5-Universal.patch ./KernelSU-Next
           
           # Apply patches
           cd KernelSU-Next
-          #patch -p1 < 10_enable_susfs_for_ksu.patch || true
+          patch -p1 --forward < KernelSU-Next-Implement-SUSFS-v1.5.5-Universal.patch || true
           
           cd ../common
           patch -p1 < 50_add_susfs_in_gki-android12-5.10.patch || true
@@ -178,7 +179,6 @@ jobs:
           
           # Add additional tmpfs config setting
           echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KMI_STRICT=y" >> ./common/arch/arm64/configs/gki_defconfig
        
           
           # Remove defconfig check
@@ -197,6 +197,7 @@ jobs:
             gki \
             --jobs=$(nproc --all) \
             --verbose_failures \
+            --user_kmi_symbol_lists=//msm-kernel:android/abi_gki_aarch64_qcom \
             -o "$(pwd)/out"
             
       - name: Debug Working Directory
