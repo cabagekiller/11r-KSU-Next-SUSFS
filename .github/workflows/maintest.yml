@@ -110,11 +110,11 @@ jobs:
       - name: Set LTO to THIN
         working-directory: builds/${{ env.ROOT_DIR }}/kernel_platform/oneplus12_v/kernel_platform
         run: |
-         sed -i 's/CONFIG_LTO=n/CONFIG_LTO=y/' "./common/arch/arm64/configs/gki_defconfig"
-         sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
-         sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
-
-          
+          sed -i '/CONFIG_LTO=/s/=n/=y/' "./common/arch/arm64/configs/gki_defconfig"
+          sed -i '/CONFIG_LTO_CLANG_FULL=/s/=y/=n/' "./common/arch/arm64/configs/gki_defconfig"
+          sed -i '/CONFIG_LTO_CLANG_NONE=/s/=y/=n/' "./common/arch/arm64/configs/gki_defconfig"
+          sed -i 's/# CONFIG_LTO_CLANG_THIN is not set/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
+          sed -i '/CONFIG_LTO_CLANG_THIN=/s/=n/=y/' "./common/arch/arm64/configs/gki_defconfig"
       - name: Setup SUSFS
         working-directory: builds/${{ env.ROOT_DIR }}/kernel_platform/oneplus12_v/kernel_platform
         run: |
