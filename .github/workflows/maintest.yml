@@ -103,7 +103,7 @@ jobs:
       - name: Setup KernelSU
         working-directory: builds/${{ env.ROOT_DIR }}/kernel_platform/oneplus12_v/kernel_platform
         run: |
-          curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+          curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next-susfs
           cd KernelSU-Next/kernel
           sed -i 's/ccflags-y += -DKSU_VERSION=16/ccflags-y += -DKSU_VERSION=12335/' ./Makefile
 
@@ -138,7 +138,7 @@ jobs:
           
           # Apply patches
           cd KernelSU-Next
-          patch -p1 < 10_enable_susfs_for_ksu.patch || true
+          #patch -p1 < 10_enable_susfs_for_ksu.patch || true
           
           cd ../common
           patch -p1 < 50_add_susfs_in_gki-android12-5.10.patch || true
@@ -149,10 +149,10 @@ jobs:
           cd ./msm-kernel && git add -A && git commit -a -m "BUILD Kernel" || true
           cd ..
           
-          patch -p1 -F 3 < selinux.c_fix.patch || true
-          patch -p1 -F 3 < apk_sign.c_fix.patch || true
-          patch -p1 --fuzz=3 < Makefile_fix.patch || true
-          patch -p1 --fuzz=3 < core_hook.c_fix.patch || true
+          #patch -p1 -F 3 < selinux.c_fix.patch || true
+          #patch -p1 -F 3 < apk_sign.c_fix.patch || true
+          #patch -p1 --fuzz=3 < Makefile_fix.patch || true
+          #patch -p1 --fuzz=3 < core_hook.c_fix.patch || true
 
       - name: Configure Kernel
         working-directory: builds/${{ env.ROOT_DIR }}/kernel_platform/oneplus12_v/kernel_platform
