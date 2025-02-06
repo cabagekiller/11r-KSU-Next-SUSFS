@@ -124,7 +124,7 @@ jobs:
            #patch -p1 -F 3 < selinux.c_fix.patch
 
       - name: Configure Kernel
-        working-directory: builds/${{ env.ROOT_DIR }}/kernel_platform/oneplus11_v/kernel_platform
+        working-directory: kernel_workspace/kernel_platform
         run: |
           # Basic KernelSU and SUSFS configs
           echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
